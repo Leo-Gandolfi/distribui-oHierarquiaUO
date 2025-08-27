@@ -10,9 +10,9 @@ def normalize(s: str) -> str:
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     return " ".join(s.lower().strip().split())
 
+# --- writer com autoajuste + congelar + autofiltro ---
 def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
     out = BytesIO()
-
     # escolhe o writer disponível
     try:
         import xlsxwriter  # noqa
@@ -22,59 +22,58 @@ def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
             import openpyxl  # noqa
             engine = "openpyxl"
         except Exception:
-            raise RuntimeError(
-                "Instale: pip install xlsxwriter ou pip install openpyxl"
-            )
+            raise RuntimeError("Instale: pip install xlsxwriter OU pip install openpyxl")
 
     with pd.ExcelWriter(out, engine=engine) as writer:
         dfx.to_excel(writer, index=False, sheet_name=sheet_name)
 
         if engine == "xlsxwriter":
             ws = writer.sheets[sheet_name]
-
-            # congela a primeira linha (cabeçalho) e aplica autofiltro
             ws.freeze_panes(1, 0)
             ws.autofilter(0, 0, dfx.shape[0], dfx.shape[1]-1)
-
-            # autoajuste de largura por coluna (cabeçalho + conteúdo)
             for i, col in enumerate(dfx.columns):
-                maxlen = max(
-                    len(str(col)),
-                    (dfx[col].astype(str).map(len).max() if not dfx.empty else 0)
-                )
-                ws.set_column(i, i, min(maxlen + 2, 80))  # margem + limite
+                maxlen = max(len(str(col)), (dfx[col].astype(str).map(len).max() if not dfx.empty else 0))
+                ws.set_column(i, i, min(maxlen + 2, 80))
         else:
-            # openpyxl
             from openpyxl.utils import get_column_letter
             ws = writer.sheets[sheet_name]
-
-            # congela a primeira linha (A2) e aplica autofiltro
             ws.freeze_panes = "A2"
             last_col = get_column_letter(dfx.shape[1])
-            last_row = dfx.shape[0] + 1  # +1 por causa do cabeçalho
+            last_row = dfx.shape[0] + 1
             ws.auto_filter.ref = f"A1:{last_col}{last_row}"
-
-            # autoajuste de largura
             for i, col in enumerate(dfx.columns, start=1):
-                maxlen = max(
-                    len(str(col)),
-                    (dfx[col].astype(str).map(len).max() if not dfx.empty else 0)
-                )
+                maxlen = max(len(str(col)), (dfx[col].astype(str).map(len).max() if not dfx.empty else 0))
                 ws.column_dimensions[get_column_letter(i)].width = min(maxlen + 2, 80)
 
     out.seek(0)
     return out
 
+# --- escolha do engine para leitura ---
+def pick_engine(filename: str) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".xlsx"):
+        return "openpyxl"   # precisa de openpyxl
+    if name.endswith(".xls"):
+        return "xlrd"       # precisa de xlrd==1.2.0
+    return "openpyxl"
 
 st.title("Separar Excel em QUALF e NR")
 
 file = st.file_uploader("Envie o Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
 
 if file:
-    # Lista as abas e deixa escolher
-    xls = pd.ExcelFile(file)
+    # escolhe engine e tenta abrir a pasta de trabalho
+    engine = pick_engine(file.name)
+    try:
+        xls = pd.ExcelFile(file, engine=engine)
+    except ImportError as e:
+        # mensagem amigável no deploy se faltar dependência
+        missing = "openpyxl>=3.1.4" if engine == "openpyxl" else "xlrd==1.2.0"
+        st.error(f"Dependência ausente para ler o arquivo ({engine}). Adicione no requirements: {missing}. Detalhe: {e}")
+        st.stop()
+
     sheet = st.selectbox("Escolha a aba da planilha", xls.sheet_names, index=0)
-    df = pd.read_excel(xls, sheet_name=sheet)
+    df = pd.read_excel(xls, sheet_name=sheet, engine=engine)
 
     # Normalizações de nomes
     norm = {c: normalize(c) for c in df.columns}

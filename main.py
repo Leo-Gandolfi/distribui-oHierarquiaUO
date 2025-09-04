@@ -10,16 +10,14 @@ def normalize(s: str) -> str:
     s = "".join(ch for ch in s if not unicodedata.combining(ch))
     return " ".join(s.lower().strip().split())
 
-# --- writer com autoajuste + congelar + autofiltro ---
 def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
     out = BytesIO()
-    # escolhe o writer disponível
     try:
-        import xlsxwriter  # noqa
+        import xlsxwriter 
         engine = "xlsxwriter"
     except Exception:
         try:
-            import openpyxl  # noqa
+            import openpyxl  
             engine = "openpyxl"
         except Exception:
             raise RuntimeError("Instale: pip install xlsxwriter OU pip install openpyxl")
@@ -48,13 +46,12 @@ def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
     out.seek(0)
     return out
 
-# --- escolha do engine para leitura ---
 def pick_engine(filename: str) -> str:
     name = (filename or "").lower()
     if name.endswith(".xlsx"):
-        return "openpyxl"   # precisa de openpyxl
+        return "openpyxl"   
     if name.endswith(".xls"):
-        return "xlrd"       # precisa de xlrd==1.2.0
+        return "xlrd"     
     return "openpyxl"
 
 st.title("Separar Excel em QUALF e NR")
@@ -62,12 +59,10 @@ st.title("Separar Excel em QUALF e NR")
 file = st.file_uploader("Envie o Excel (.xlsx ou .xls)", type=["xlsx", "xls"])
 
 if file:
-    # escolhe engine e tenta abrir a pasta de trabalho
     engine = pick_engine(file.name)
     try:
         xls = pd.ExcelFile(file, engine=engine)
     except ImportError as e:
-        # mensagem amigável no deploy se faltar dependência
         missing = "openpyxl>=3.1.4" if engine == "openpyxl" else "xlrd==1.2.0"
         st.error(f"Dependência ausente para ler o arquivo ({engine}). Adicione no requirements: {missing}. Detalhe: {e}")
         st.stop()
@@ -75,11 +70,9 @@ if file:
     sheet = st.selectbox("Escolha a aba da planilha", xls.sheet_names, index=0)
     df = pd.read_excel(xls, sheet_name=sheet, engine=engine)
 
-    # Normalizações de nomes
     norm = {c: normalize(c) for c in df.columns}
     def has_inativo(c): return "inativo" in normalize(c)
 
-    # Colunas fixas
     targets = {
         "cargo":"cargo",
         "identificação":"identificacao",
@@ -89,7 +82,6 @@ if file:
         "negócio da posição":"negocio da posicao",
     }
 
-    # normalizado -> original
     nm2orig = {}
     for c,n in norm.items():
         nm2orig.setdefault(n, c)
@@ -102,15 +94,12 @@ if file:
             cand = [c for c,n in norm.items() if key in n]
             if cand: base_cols.append(cand[0])
 
-    # Remove colunas com "inativo"
     valid_cols = [c for c in df.columns if not has_inativo(c)]
     base_cols = [c for c in base_cols if c in valid_cols]
 
-    # Grupos
     qualf_cols = [c for c in valid_cols if normalize(c).startswith("qualf")]
     nr_cols    = [c for c in valid_cols if normalize(c).startswith("nr")]
 
-    # Conjuntos finais (preservando ordem e sem duplicatas)
     def unique(seq): return list(dict.fromkeys(seq))
     df_qualf = df[unique(base_cols + qualf_cols)]
     df_nr    = df[unique(base_cols + nr_cols)]

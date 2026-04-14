@@ -30,7 +30,7 @@ def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
             ws.freeze_panes(1, 0)
             ws.autofilter(0, 0, dfx.shape[0], dfx.shape[1]-1)
             for i, col in enumerate(dfx.columns):
-                maxlen = max(len(str(col)), (dfx[col].astype(str).map(len).max() if not dfx.empty else 0))
+                maxlen = max(len(str(col)), (dfx[col].astype(str).str.len().max() if not dfx.empty else 0))
                 ws.set_column(i, i, min(maxlen + 2, 80))
         else:
             from openpyxl.utils import get_column_letter
@@ -40,7 +40,7 @@ def to_excel_bytes(dfx: pd.DataFrame, sheet_name: str) -> BytesIO:
             last_row = dfx.shape[0] + 1
             ws.auto_filter.ref = f"A1:{last_col}{last_row}"
             for i, col in enumerate(dfx.columns, start=1):
-                maxlen = max(len(str(col)), (dfx[col].astype(str).map(len).max() if not dfx.empty else 0))
+                maxlen = max(len(str(col)), (dfx[col].astype(str).str.len().max() if not dfx.empty else 0))
                 ws.column_dimensions[get_column_letter(i)].width = min(maxlen + 2, 80)
 
     out.seek(0)
